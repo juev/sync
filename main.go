@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -120,7 +121,7 @@ func main() {
 
 func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingUrl string,
 	sheduleTime time.Duration) error {
-	// since := time.Now().Add(sheduleTime).Unix()
+	since := time.Now().Add(sheduleTime).Unix()
 
 	operation := func() (string, error) {
 		var dat string
@@ -128,7 +129,7 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			URL("https://getpocket.com/v3/get").
 			Param("consumer_key", pocketConsumerKey).
 			Param("access_token", pocketAccessToken).
-			// Param("since", strconv.FormatInt(since, 10)).
+			Param("since", strconv.FormatInt(since, 10)).
 			ToString(&dat).
 			Fetch(context.Background())
 		if err != nil {
@@ -176,10 +177,6 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			}
 
 			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
-			if errors.Is(err, linkdingUnauthorizedErr) {
-				return linkdingUnauthorizedErr
-			}
-
 			if err != nil {
 				logger.Error("Failed to save bookmark", "error", err, "resolved_url", u.String())
 				return err
