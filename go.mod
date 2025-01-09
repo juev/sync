@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/carlmjohnson/requests v0.24.3
-	github.com/cenkalti/backoff/v5 v5.0.0
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
 )
