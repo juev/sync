@@ -26,7 +26,7 @@ const (
 
 var logger *slog.Logger
 
-var level = map[string]slog.Level{
+var logLevels = map[string]slog.Level{
 	"debug": slog.LevelDebug,
 	"info":  slog.LevelInfo,
 	"warn":  slog.LevelWarn,
@@ -36,16 +36,24 @@ var level = map[string]slog.Level{
 var linkdingUnauthorizedErr = errors.New("Linkding Unauthorized")
 
 func main() {
-	// Iintialize logger
+	// Initialize logger
 	logLevelEnv := os.Getenv("LOG_LEVEL")
-	logLevel, ok := level[strings.ToLower(logLevelEnv)]
+	logLevel, ok := logLevels[strings.ToLower(logLevelEnv)]
 	if !ok {
-		logLevel = slog.LevelInfo
+		logLevel = slog.LevelInfo // Default log level
 	}
-	opts := &slog.HandlerOptions{
-		Level: logLevel,
-	}
-	logger = slog.New(prettylog.NewHandler(opts))
+
+	// Initialize logger with the determined log level
+	logger = slog.New(prettylog.NewHandler(&slog.HandlerOptions{Level: logLevel}))
+
+	// Handle signals for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		logger.Info("Received signal, shutting down", "signal", sig)
+		os.Exit(0)
+	}()
 
 	// Start
 	logger.Info("Starting")
@@ -92,57 +100,48 @@ func main() {
 	}
 	runProcess()
 
-	// Create a ticker that triggers every 30 minutes
+	// Create a ticker that triggers every sheduleTime value
 	ticker := time.NewTicker(sheduleTime)
 	defer ticker.Stop()
 
-	// Create a channel to listen for system signals
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	for {
-		select {
-		case <-ticker.C:
-			runProcess()
-		case <-sigChan:
-			logger.Info("Received shutdown signal")
-			return
-		}
+	for range ticker.C {
+		runProcess()
 	}
 }
 
 func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingUrl string,
-	sheduleTime time.Duration) error {
-	since := time.Now().Add(sheduleTime).Unix()
+	scheduleTime time.Duration) error {
+	since := time.Now().Add(-scheduleTime).Unix()
 
 	operation := func() (string, error) {
-		var dat string
+		var responseData string
 		err := requests.
 			URL("https://getpocket.com/v3/get").
 			Param("consumer_key", pocketConsumerKey).
 			Param("access_token", pocketAccessToken).
 			Param("since", strconv.FormatInt(since, 10)).
-			ToString(&dat).
+			ToString(&responseData).
 			Fetch(context.Background())
 		if err != nil {
 			logger.Error("Failed to fetch getpocket data", "error", err)
 			return "", err
 		}
 
-		return dat, nil
+		return responseData, nil
 	}
 
-	dat, err := backoff.RetryWithData(operation, backoff.NewExponentialBackOff())
+	responseData, err := backoff.RetryWithData(operation, backoff.NewExponentialBackOff())
 	if err != nil {
+		logger.Error("Failed to retry operation", "error", err)
 		return err
 	}
 
-	if gjson.Get(dat, "status").Int() == 2 {
-		logger.Info("No new items")
+	if gjson.Get(responseData, "status").Int() == 2 {
+		logger.Info("No new data from Pocket")
 		return nil
 	}
 
-	list := gjson.Get(dat, "list").Map()
+	list := gjson.Get(responseData, "list").Map()
 	var exitErr error
 	for k := range list {
 		value := list[k].String()
