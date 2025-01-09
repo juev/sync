@@ -18,36 +18,6 @@ archives:
       {{ .ProjectName }}-
       {{- tolower .Os }}-
       {{- tolower .Arch }}
-dockers:
-  - #
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-amd64"
-    build_flag_templates:
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--platform=linux/amd64"
-  - #
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-arm64v8"
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-arm64v8"
-    build_flag_templates:
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--platform=linux/arm64/v8"
-docker_manifests:
-  - name_template: "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-arm64v8"
-  - name_template: "ghcr.io/juev/{{ .ProjectName }}:latest"
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-amd64"
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-arm64v8"
 checksum:
   name_template: 'checksums.txt'
 changelog:
