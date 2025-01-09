@@ -23,7 +23,7 @@ dockers:
     goos: linux
     goarch: amd64
     image_templates:
-      - "gcr.io/juev/{{ .ProjectName }}:latest"
+      - "ghcr.io/juev/{{ .ProjectName }}:latest"
     use: buildx
     build_flag_templates:
       - "--pull"
@@ -36,7 +36,7 @@ dockers:
     goos: linux
     goarch: arm64
     image_templates:
-      - "gcr.io/juev/{{ .ProjectName }}:latest"
+      - "ghcr.io/juev/{{ .ProjectName }}:latest"
     use: buildx
     build_flag_templates:
       - "--pull"
