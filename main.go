@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"os"
@@ -15,6 +16,10 @@ import (
 	"github.com/juev/sync/prettylog"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+)
+
+const (
+	DEFAULT_SCHEDULE_TIME = "30m"
 )
 
 var logger *slog.Logger
@@ -62,6 +67,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	sheduleTimeEnv := cmp.Or(os.Getenv("SCHEDULE_TIME"), DEFAULT_SCHEDULE_TIME)
+	sheduleTime, err := time.ParseDuration(sheduleTimeEnv)
+	if err != nil {
+		sheduleTime, _ = time.ParseDuration(DEFAULT_SCHEDULE_TIME)
+	}
+
 	// Init backoff
 	expBackOff := backoff.NewExponentialBackOff()
 	expBackOff.MaxElapsedTime = 5 * time.Minute
@@ -71,17 +82,17 @@ func main() {
 			pocketAccessToken,
 			linkdingAccessToken,
 			linkdingUrl,
+			sheduleTime,
 		)
 	}
 
 	// First run operation
-	err := backoff.Retry(operation, expBackOff)
-	if err != nil {
+	if err := backoff.Retry(operation, expBackOff); err != nil {
 		logger.Error("Failed process", "error", err)
 	}
 
 	// Create a ticker that triggers every 30 minutes
-	ticker := time.NewTicker(30 * time.Minute)
+	ticker := time.NewTicker(sheduleTime)
 	defer ticker.Stop()
 
 	// Create a channel to listen for system signals
@@ -103,9 +114,8 @@ func main() {
 	}
 }
 
-func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingUrl string) error {
-	// TODO since should be configurable
-	since := time.Now().Add(30 * time.Minute).Unix()
+func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingUrl string, sheduleTime time.Duration) error {
+	since := time.Now().Add(sheduleTime).Unix()
 
 	var dat string
 	err := requests.
