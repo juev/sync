@@ -74,6 +74,12 @@ func main() {
 		)
 	}
 
+	// First run operation
+	err := backoff.Retry(operation, expBackOff)
+	if err != nil {
+		logger.Error("Failed process", "error", err)
+	}
+
 	// Create a ticker that triggers every 30 minutes
 	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
