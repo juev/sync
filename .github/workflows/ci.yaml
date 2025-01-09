@@ -48,7 +48,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/juev/getpocket-collector:latest
+            ghcr.io/juev/sync:latest
       - 
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
