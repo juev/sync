@@ -23,7 +23,6 @@ dockers:
     image_templates:
       - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-amd64"
       - "ghcr.io/juev/{{ .ProjectName }}:latest-amd64"
-    use: buildx
     build_flag_templates:
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
@@ -34,7 +33,6 @@ dockers:
     image_templates:
       - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-arm64v8"
       - "ghcr.io/juev/{{ .ProjectName }}:latest-arm64v8"
-    use: buildx
     build_flag_templates:
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
