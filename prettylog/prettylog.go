@@ -151,7 +151,7 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 
 	var attrsAsBytes []byte
 	if h.outputEmptyAttrs || len(attrs) > 0 {
-		attrsAsBytes, err = json.MarshalIndent(attrs, "", "  ")
+		attrsAsBytes, err = json.Marshal(attrs)
 		if err != nil {
 			return fmt.Errorf("error when marshaling attrs: %w", err)
 		}
