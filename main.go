@@ -3,10 +3,11 @@ package main
 import (
 	"cmp"
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -30,6 +31,8 @@ var level = map[string]slog.Level{
 	"warn":  slog.LevelWarn,
 	"error": slog.LevelError,
 }
+
+var linkdingUnauthorizedErr = errors.New("Linkding Unauthorized")
 
 func main() {
 	// Iintialize logger
@@ -73,22 +76,17 @@ func main() {
 		sheduleTime, _ = time.ParseDuration(DEFAULT_SCHEDULE_TIME)
 	}
 
-	// Init backoff
-	expBackOff := backoff.NewExponentialBackOff()
-	expBackOff.MaxElapsedTime = 5 * time.Minute
-	operation := func() error {
-		return process(
-			pocketConsumerKey,
-			pocketAccessToken,
-			linkdingAccessToken,
-			linkdingUrl,
-			sheduleTime,
-		)
-	}
-
 	// First run operation
-	if err := backoff.Retry(operation, expBackOff); err != nil {
+	err = process(
+		pocketConsumerKey,
+		pocketAccessToken,
+		linkdingAccessToken,
+		linkdingUrl,
+		sheduleTime,
+	)
+	if err != nil {
 		logger.Error("Failed process", "error", err)
+		os.Exit(1)
 	}
 
 	// Create a ticker that triggers every 30 minutes
@@ -102,10 +100,16 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			expBackOff.Reset()
-			err := backoff.Retry(operation, expBackOff)
+			err = process(
+				pocketConsumerKey,
+				pocketAccessToken,
+				linkdingAccessToken,
+				linkdingUrl,
+				sheduleTime,
+			)
 			if err != nil {
 				logger.Error("Failed process", "error", err)
+				os.Exit(1)
 			}
 		case <-sigChan:
 			logger.Info("Received shutdown signal")
@@ -114,19 +118,29 @@ func main() {
 	}
 }
 
-func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingUrl string, sheduleTime time.Duration) error {
-	since := time.Now().Add(sheduleTime).Unix()
+func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingUrl string,
+	sheduleTime time.Duration) error {
+	// since := time.Now().Add(sheduleTime).Unix()
 
-	var dat string
-	err := requests.
-		URL("https://getpocket.com/v3/get").
-		Param("consumer_key", pocketConsumerKey).
-		Param("access_token", pocketAccessToken).
-		Param("since", strconv.FormatInt(since, 10)).
-		ToString(&dat).
-		Fetch(context.Background())
+	operation := func() (string, error) {
+		var dat string
+		err := requests.
+			URL("https://getpocket.com/v3/get").
+			Param("consumer_key", pocketConsumerKey).
+			Param("access_token", pocketAccessToken).
+			// Param("since", strconv.FormatInt(since, 10)).
+			ToString(&dat).
+			Fetch(context.Background())
+		if err != nil {
+			logger.Error("Failed to fetch getpocket data", "error", err)
+			return "", err
+		}
+
+		return dat, nil
+	}
+
+	dat, err := backoff.RetryWithData(operation, backoff.NewExponentialBackOff())
 	if err != nil {
-		logger.Error("Error", "error", err)
 		return err
 	}
 
@@ -135,26 +149,45 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 		return nil
 	}
 
-	gjson.Get(dat, "list").ForEach(func(_, value gjson.Result) bool {
-		u := value.Get("resolved_url")
+	list := gjson.Get(dat, "list").Map()
+	for k := range list {
+		value := list[k].String()
+		u := gjson.Get(value, "resolved_url")
 		if u.Exists() {
-			value, _ := sjson.Set("", "url", u.String())
-			err := requests.
-				URL(linkdingUrl+"/api/bookmarks/").
-				BodyBytes([]byte(value)).
-				Header("auth", "Authorization "+linkdingAccessToken).
-				ContentType("application/json").
-				Fetch(context.Background())
+			logger.Info("Processing", "resolved_url", u.String())
+
+			operation := func() error {
+				value, _ := sjson.Set("", "url", u.String())
+				err := requests.
+					URL(linkdingUrl+"/api/bookmarks/").
+					BodyBytes([]byte(value)).
+					Header("Authorization", "Token "+linkdingAccessToken).
+					ContentType("application/json").
+					Fetch(context.Background())
+				if requests.HasStatusErr(err, http.StatusUnauthorized) {
+					return backoff.Permanent(linkdingUnauthorizedErr)
+				}
+
+				if err != nil {
+					return err
+				}
+
+				return nil
+			}
+
+			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
+			if errors.Is(err, linkdingUnauthorizedErr) {
+				return linkdingUnauthorizedErr
+			}
+
 			if err != nil {
-				logger.Error("Error", "error", err)
-				return false
+				logger.Error("Failed to save bookmark", "error", err, "resolved_url", u.String())
+				return err
 			}
 
 			logger.Info("Added", "url", u.String())
 		}
-
-		return true
-	})
+	}
 
 	return nil
 }
