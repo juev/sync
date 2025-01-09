@@ -78,17 +78,19 @@ func main() {
 	}
 
 	// First run operation
-	err = process(
-		pocketConsumerKey,
-		pocketAccessToken,
-		linkdingAccessToken,
-		linkdingUrl,
-		sheduleTime,
-	)
-	if err != nil {
-		logger.Error("Failed process", "error", err)
-		os.Exit(1)
+	runProcess := func() {
+		err = process(
+			pocketConsumerKey,
+			pocketAccessToken,
+			linkdingAccessToken,
+			linkdingUrl,
+			sheduleTime,
+		)
+		if err != nil {
+			logger.Error("Failed process", "error", err)
+		}
 	}
+	runProcess()
 
 	// Create a ticker that triggers every 30 minutes
 	ticker := time.NewTicker(sheduleTime)
@@ -101,17 +103,7 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			err = process(
-				pocketConsumerKey,
-				pocketAccessToken,
-				linkdingAccessToken,
-				linkdingUrl,
-				sheduleTime,
-			)
-			if err != nil {
-				logger.Error("Failed process", "error", err)
-				os.Exit(1)
-			}
+			runProcess()
 		case <-sigChan:
 			logger.Info("Received shutdown signal")
 			return
@@ -151,6 +143,7 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	}
 
 	list := gjson.Get(dat, "list").Map()
+	var exitErr error
 	for k := range list {
 		value := list[k].String()
 		u := gjson.Get(value, "resolved_url")
@@ -179,12 +172,16 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
 			if err != nil {
 				logger.Error("Failed to save bookmark", "error", err, "resolved_url", u.String())
-				return err
+				if !errors.Is(exitErr, err) {
+					exitErr = errors.Join(exitErr, err)
+				}
+
+				continue
 			}
 
 			logger.Info("Added", "url", u.String())
 		}
 	}
 
-	return nil
+	return exitErr
 }
