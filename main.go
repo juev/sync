@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	DEFAULT_SCHEDULE_TIME = "30m"
+	defaultScheduleTime = "30m"
 )
 
 var logger *slog.Logger
@@ -33,7 +33,7 @@ var logLevels = map[string]slog.Level{
 	"error": slog.LevelError,
 }
 
-var linkdingUnauthorizedErr = errors.New("Linkding Unauthorized")
+var errLinkdingUnauthorized = errors.New("Linkding Unauthorized")
 
 func main() {
 	// Initialize logger
@@ -73,16 +73,16 @@ func main() {
 		logger.Error("LINKDING_ACCESS_TOKEN is not set")
 		os.Exit(1)
 	}
-	linkdingUrl := os.Getenv("LINKDING_URL")
-	if linkdingUrl == "" {
+	linkdingURL := os.Getenv("LINKDING_URL")
+	if linkdingURL == "" {
 		logger.Error("LINKDING_URL is not set")
 		os.Exit(1)
 	}
 
-	sheduleTimeEnv := cmp.Or(os.Getenv("SCHEDULE_TIME"), DEFAULT_SCHEDULE_TIME)
+	sheduleTimeEnv := cmp.Or(os.Getenv("SCHEDULE_TIME"), defaultScheduleTime)
 	sheduleTime, err := time.ParseDuration(sheduleTimeEnv)
 	if err != nil {
-		sheduleTime, _ = time.ParseDuration(DEFAULT_SCHEDULE_TIME)
+		sheduleTime, _ = time.ParseDuration(defaultScheduleTime)
 	}
 
 	// First run operation
@@ -91,7 +91,7 @@ func main() {
 			pocketConsumerKey,
 			pocketAccessToken,
 			linkdingAccessToken,
-			linkdingUrl,
+			linkdingURL,
 			sheduleTime,
 		)
 		if err != nil {
@@ -109,7 +109,7 @@ func main() {
 	}
 }
 
-func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingUrl string,
+func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingURL string,
 	scheduleTime time.Duration) error {
 	since := time.Now().Add(-scheduleTime).Unix()
 
@@ -152,13 +152,13 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			operation := func() error {
 				value, _ := sjson.Set("", "url", u.String())
 				err := requests.
-					URL(linkdingUrl+"/api/bookmarks/").
+					URL(linkdingURL+"/api/bookmarks/").
 					BodyBytes([]byte(value)).
 					Header("Authorization", "Token "+linkdingAccessToken).
 					ContentType("application/json").
 					Fetch(context.Background())
 				if requests.HasStatusErr(err, http.StatusUnauthorized) {
-					return backoff.Permanent(linkdingUnauthorizedErr)
+					return backoff.Permanent(errLinkdingUnauthorized)
 				}
 
 				if err != nil {
