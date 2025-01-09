@@ -4,8 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/carlmjohnson/requests"
@@ -60,6 +62,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Init backoff
 	expBackOff := backoff.NewExponentialBackOff()
 	expBackOff.MaxElapsedTime = 5 * time.Minute
 	operation := func() error {
@@ -70,10 +73,27 @@ func main() {
 			linkdingUrl,
 		)
 	}
-	err := backoff.Retry(operation, expBackOff)
-	if err != nil {
-		logger.Error("Failed process", "error", err)
-		os.Exit(1)
+
+	// Create a ticker that triggers every 30 minutes
+	ticker := time.NewTicker(30 * time.Minute)
+	defer ticker.Stop()
+
+	// Create a channel to listen for system signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	for {
+		select {
+		case <-ticker.C:
+			expBackOff.Reset()
+			err := backoff.Retry(operation, expBackOff)
+			if err != nil {
+				logger.Error("Failed process", "error", err)
+			}
+		case <-sigChan:
+			logger.Info("Received shutdown signal")
+			return
+		}
 	}
 }
 
@@ -113,6 +133,7 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 				logger.Error("Error", "error", err)
 				return false
 			}
+
 			logger.Info("Added", "url", u.String())
 		}
 
