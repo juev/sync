@@ -18,6 +18,37 @@ archives:
       {{ .ProjectName }}-
       {{- tolower .Os }}-
       {{- tolower .Arch }}
+dockers:
+  - #
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "juev/{{ .ProjectName }}-{{- tolower .Arch }}:latest"
+      - "juev/{{ .ProjectName }}-{{- tolower .Arch }}:{{ .Tag }}"
+      - "gcr.io/juev/{{ .ProjectName }}-{{- tolower .Arch }}:latest"
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--platform=linux/amd64"
+  - #
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "juev/{{ .ProjectName }}-{{- tolower .Arch }}:latest"
+      - "juev/{{ .ProjectName }}-{{- tolower .Arch }}:{{ .Tag }}"
+      - "gcr.io/juev/{{ .ProjectName }}-{{- tolower .Arch }}:latest"
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--platform=linux/arm64"
 checksum:
   name_template: 'checksums.txt'
 changelog:
