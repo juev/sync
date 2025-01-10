@@ -4,7 +4,9 @@ before:
   hooks:
     - go mod tidy
 builds:
-  - env:
+  - 
+    id: "sync"
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -18,38 +20,22 @@ archives:
       {{ .ProjectName }}-
       {{- tolower .Os }}-
       {{- tolower .Arch }}
-dockers:
-  - #
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-amd64"
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--platform=linux/amd64"
-  - #
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-arm64v8"
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-arm64v8"
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--platform=linux/arm64/v8"
-docker_manifests:
-  - name_template: "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/juev/{{ .ProjectName }}:{{ .Version }}-arm64v8"
-  - name_template: "ghcr.io/juev/{{ .ProjectName }}:latest"
-    image_templates:
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-amd64"
-      - "ghcr.io/juev/{{ .ProjectName }}:latest-arm64v8"
+
+kos:
+  - repositories: 
+      - ghcr.io/juev/sync
+    build: "sync"
+    tags:
+      - "{{.Tag}}"
+      - latest
+    base_image: alpine:latest
+    user: "1001:1001"
+    bare: true
+    preserve_import_paths: false
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
 checksum:
   name_template: 'checksums.txt'
 changelog:
