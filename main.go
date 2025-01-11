@@ -57,9 +57,6 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// Start
-	logger.Info("Starting")
-
 	pocketConsumerKey := os.Getenv("POCKET_CONSUMER_KEY")
 	if pocketConsumerKey == "" {
 		logger.Error("POCKET_CONSUMER_KEY is not set")
@@ -88,6 +85,9 @@ func main() {
 	}
 	since = time.Now().Add(-scheduleTime).Unix()
 
+	// Start
+	logger.Info("Starting", "since", time.Unix(since, 0).Format(time.RFC3339))
+
 	// First run operation
 	runProcess := func() {
 		err = process(
@@ -97,7 +97,8 @@ func main() {
 			linkdingURL,
 		)
 		if err != nil {
-			logger.Error("Failed process", "error", err)
+			logger.Error("Failed process", "error", err,
+				"since", time.Unix(since, 0).Format(time.RFC3339))
 		}
 	}
 	runProcess()
@@ -122,7 +123,8 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			ToString(&responseData).
 			Fetch(context.Background())
 		if err != nil {
-			logger.Error("Failed to fetch getpocket data", "error", err)
+			logger.Error("Failed to fetch getpocket data", "error", err,
+				"since", time.Unix(since, 0).Format(time.RFC3339))
 			return "", err
 		}
 
@@ -132,7 +134,8 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	newSince := time.Now().Unix()
 	responseData, err := backoff.RetryWithData(operation, backoff.NewExponentialBackOff())
 	if err != nil {
-		logger.Error("Failed request to Pocket", "error", err)
+		logger.Error("Failed request to Pocket", "error", err,
+			"since", time.Unix(since, 0).Format(time.RFC3339))
 		return err
 	}
 
@@ -141,7 +144,9 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	}
 
 	if gjson.Get(responseData, "status").Int() == 2 {
-		logger.Info("No new data from Pocket")
+		logger.Info("No new data from Pocket",
+			"since", time.Unix(since, 0).Format(time.RFC3339),
+			"new_since", time.Unix(newSince, 0).Format(time.RFC3339))
 		since = newSince
 		return nil
 	}
@@ -188,6 +193,8 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	}
 
 	if exitErr == nil {
+		logger.Debug("Since info", "since", time.Unix(since, 0).Format(time.RFC3339),
+			"new_since", time.Unix(newSince, 0).Format(time.RFC3339))
 		since = newSince
 	}
 
