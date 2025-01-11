@@ -17,7 +17,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/juev/sync/prettylog"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 const (
@@ -118,9 +117,14 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 		var responseData string
 		err := requests.
 			URL("https://getpocket.com/v3/get").
-			Param("consumer_key", pocketConsumerKey).
-			Param("access_token", pocketAccessToken).
-			Param("since", strconv.FormatInt(since, 10)).
+			BodyJSON(&requestPocket{
+				State:       "unread",
+				DetailType:  "simple",
+				ConsumerKey: pocketConsumerKey,
+				AccessToken: pocketAccessToken,
+				Since:       strconv.FormatInt(since, 10),
+			}).
+			ContentType("application/json").
 			ToString(&responseData).
 			Fetch(context.Background())
 		if err != nil {
@@ -158,10 +162,11 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			logger.Info("Processing", "resolved_url", u.String())
 
 			operation := func() error {
-				value, _ := sjson.Set("", "url", u.String())
 				err := requests.
 					URL(linkdingURL+"/api/bookmarks/").
-					BodyBytes([]byte(value)).
+					BodyJSON(&requestLinkding{
+						URL: u.String(),
+					}).
 					Header("Authorization", "Token "+linkdingAccessToken).
 					ContentType("application/json").
 					Fetch(context.Background())
@@ -200,4 +205,16 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	}
 
 	return exitErr
+}
+
+type requestPocket struct {
+	ConsumerKey string `json:"consumer_key"`
+	AccessToken string `json:"access_token"`
+	State       string `json:"state"`
+	DetailType  string `json:"detailType"`
+	Since       string `json:"since"`
+}
+
+type requestLinkding struct {
+	URL string `json:"url"`
 }
