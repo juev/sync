@@ -83,10 +83,9 @@ func main() {
 	if err != nil {
 		scheduleTime, _ = time.ParseDuration(defaultScheduleTime)
 	}
-	since = time.Now().Add(-scheduleTime).Unix()
 
 	// Start
-	logger.Info("Starting", "since", time.Unix(since, 0).Format(time.RFC3339))
+	logger.Info("Starting")
 
 	// First run operation
 	runProcess := func() {
@@ -97,10 +96,11 @@ func main() {
 			linkdingURL,
 		)
 		if err != nil {
-			logger.Error("Failed process", "error", err,
-				"since", time.Unix(since, 0).Format(time.RFC3339))
+			logger.Error("Failed process", "error", err)
 		}
 	}
+	// 30 days ago
+	since = time.Now().Add(-24 * 30 * time.Hour).Unix()
 	runProcess()
 
 	// Create a ticker that triggers every sheduleTime value
@@ -113,6 +113,7 @@ func main() {
 }
 
 func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingURL string) error {
+	logger.Debug("Requesting Pocket data", "since", time.Unix(since, 0).Format(time.RFC3339))
 	operation := func() (string, error) {
 		var responseData string
 		err := requests.
@@ -123,8 +124,7 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			ToString(&responseData).
 			Fetch(context.Background())
 		if err != nil {
-			logger.Error("Failed to fetch getpocket data", "error", err,
-				"since", time.Unix(since, 0).Format(time.RFC3339))
+			logger.Error("Failed to fetch getpocket data", "error", err)
 			return "", err
 		}
 
@@ -134,8 +134,7 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	newSince := time.Now().Unix()
 	responseData, err := backoff.RetryWithData(operation, backoff.NewExponentialBackOff())
 	if err != nil {
-		logger.Error("Failed request to Pocket", "error", err,
-			"since", time.Unix(since, 0).Format(time.RFC3339))
+		logger.Error("Failed request to Pocket", "error", err)
 		return err
 	}
 
@@ -144,9 +143,7 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	}
 
 	if gjson.Get(responseData, "status").Int() == 2 {
-		logger.Info("No new data from Pocket",
-			"since", time.Unix(since, 0).Format(time.RFC3339),
-			"new_since", time.Unix(newSince, 0).Format(time.RFC3339))
+		logger.Info("No new data from Pocket")
 		since = newSince
 		return nil
 	}
@@ -179,6 +176,9 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 			}
 
 			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
+			if errors.Is(err, errLinkdingUnauthorized) {
+				return err
+			}
 			if err != nil {
 				logger.Error("Failed to save bookmark", "error", err, "resolved_url", u.String())
 				if !errors.Is(exitErr, err) {
@@ -193,8 +193,6 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 	}
 
 	if exitErr == nil {
-		logger.Debug("Since info", "since", time.Unix(since, 0).Format(time.RFC3339),
-			"new_since", time.Unix(newSince, 0).Format(time.RFC3339))
 		since = newSince
 	}
 
