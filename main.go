@@ -150,6 +150,7 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 
 	list := gjson.Get(responseData, "list").Map()
 	var exitErr error
+	var count int
 	for k := range list {
 		value := list[k].String()
 		u := gjson.Get(value, "resolved_url")
@@ -188,9 +189,11 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 				continue
 			}
 
+			count++
 			logger.Info("Added", "url", u.String())
 		}
 	}
+	logger.Info("Processed", "count", count)
 
 	if exitErr == nil {
 		since = newSince
