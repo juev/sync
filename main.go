@@ -35,6 +35,8 @@ var logLevels = map[string]slog.Level{
 
 var errLinkdingUnauthorized = errors.New("Linkding Unauthorized")
 
+var since int64
+
 func main() {
 	// Initialize logger
 	logLevelEnv := os.Getenv("LOG_LEVEL")
@@ -79,11 +81,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	sheduleTimeEnv := cmp.Or(os.Getenv("SCHEDULE_TIME"), defaultScheduleTime)
-	sheduleTime, err := time.ParseDuration(sheduleTimeEnv)
+	scheduleTimeEnv := cmp.Or(os.Getenv("SCHEDULE_TIME"), defaultScheduleTime)
+	scheduleTime, err := time.ParseDuration(scheduleTimeEnv)
 	if err != nil {
-		sheduleTime, _ = time.ParseDuration(defaultScheduleTime)
+		scheduleTime, _ = time.ParseDuration(defaultScheduleTime)
 	}
+	since = time.Now().Add(-scheduleTime).Unix()
 
 	// First run operation
 	runProcess := func() {
@@ -92,7 +95,6 @@ func main() {
 			pocketAccessToken,
 			linkdingAccessToken,
 			linkdingURL,
-			sheduleTime,
 		)
 		if err != nil {
 			logger.Error("Failed process", "error", err)
@@ -101,7 +103,7 @@ func main() {
 	runProcess()
 
 	// Create a ticker that triggers every sheduleTime value
-	ticker := time.NewTicker(sheduleTime)
+	ticker := time.NewTicker(scheduleTime)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -109,10 +111,7 @@ func main() {
 	}
 }
 
-func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingURL string,
-	scheduleTime time.Duration) error {
-	since := time.Now().Add(-scheduleTime).Unix()
-
+func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingURL string) error {
 	operation := func() (string, error) {
 		var responseData string
 		err := requests.
@@ -130,14 +129,20 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 		return responseData, nil
 	}
 
+	newSince := time.Now().Unix()
 	responseData, err := backoff.RetryWithData(operation, backoff.NewExponentialBackOff())
 	if err != nil {
-		logger.Error("Failed to retry operation", "error", err)
+		logger.Error("Failed request to Pocket", "error", err)
 		return err
+	}
+
+	if e := gjson.Get(responseData, "error").String(); e != "" {
+		return errors.New(e)
 	}
 
 	if gjson.Get(responseData, "status").Int() == 2 {
 		logger.Info("No new data from Pocket")
+		since = newSince
 		return nil
 	}
 
@@ -180,6 +185,10 @@ func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkding
 
 			logger.Info("Added", "url", u.String())
 		}
+	}
+
+	if exitErr == nil {
+		since = newSince
 	}
 
 	return exitErr
