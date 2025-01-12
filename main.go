@@ -2,21 +2,17 @@ package main
 
 import (
 	"cmp"
-	"context"
 	"errors"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/carlmjohnson/requests"
-	"github.com/cenkalti/backoff/v4"
+	"github.com/juev/sync/linkding"
+	"github.com/juev/sync/pocket"
 	"github.com/juev/sync/prettylog"
-	"github.com/tidwall/gjson"
 )
 
 const (
@@ -33,8 +29,6 @@ var logLevels = map[string]slog.Level{
 }
 
 var errLinkdingUnauthorized = errors.New("Linkding Unauthorized")
-
-var since int64
 
 func main() {
 	// Initialize logger
@@ -83,138 +77,51 @@ func main() {
 		scheduleTime, _ = time.ParseDuration(defaultScheduleTime)
 	}
 
+	pocketClient, err := pocket.New(pocketConsumerKey, pocketAccessToken)
+	if err != nil {
+		logger.Error("Failed to create Pocket client", "error", err)
+		os.Exit(1)
+	}
+	linkdingClient, err := linkding.New(linkdingURL, linkdingAccessToken)
+	if err != nil {
+		logger.Error("Failed to create Linkding client", "error", err)
+		os.Exit(1)
+	}
+
 	// Start
 	logger.Info("Starting")
 
-	// First run operation
-	runProcess := func() {
-		err = process(
-			pocketConsumerKey,
-			pocketAccessToken,
-			linkdingAccessToken,
-			linkdingURL,
-		)
-		if err != nil {
-			logger.Error("Failed process", "error", err)
+	runProcess := func(since int64) int64 {
+		logger.Debug("Processing", "since", time.Unix(since, 0).Format(time.RFC3339))
+		newSince := time.Now().Unix()
+		links, err := pocketClient.Retrive(since)
+		if err == pocket.ErrEmptyList {
+			logger.Info("No new links")
+			return newSince
 		}
+		if err != nil {
+			logger.Error("Failed to retrieve Pocket data", "error", err)
+			return since
+		}
+		for _, link := range links {
+			if err := linkdingClient.Add(link); err != nil {
+				logger.Error("Failed to save bookmark", "error", err)
+				return since
+			}
+		}
+		logger.Info("Processed", "count", len(links))
+		return newSince
 	}
+
 	// 30 days ago
-	since = time.Now().Add(-24 * 30 * time.Hour).Unix()
-	runProcess()
+	since := time.Now().Add(-24 * 30 * time.Hour).Unix()
+	since = runProcess(since)
 
 	// Create a ticker that triggers every sheduleTime value
 	ticker := time.NewTicker(scheduleTime)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runProcess()
+		since = runProcess(since)
 	}
-}
-
-func process(pocketConsumerKey, pocketAccessToken, linkdingAccessToken, linkdingURL string) error {
-	logger.Debug("Requesting Pocket data", "since", time.Unix(since, 0).Format(time.RFC3339))
-	operation := func() (string, error) {
-		var responseData string
-		err := requests.
-			URL("https://getpocket.com/v3/get").
-			BodyJSON(&requestPocket{
-				State:       "unread",
-				DetailType:  "simple",
-				ConsumerKey: pocketConsumerKey,
-				AccessToken: pocketAccessToken,
-				Since:       strconv.FormatInt(since, 10),
-			}).
-			ContentType("application/json").
-			ToString(&responseData).
-			Fetch(context.Background())
-		if err != nil {
-			logger.Error("Failed to fetch getpocket data", "error", err)
-			return "", err
-		}
-
-		return responseData, nil
-	}
-
-	newSince := time.Now().Unix()
-	responseData, err := backoff.RetryWithData(operation, backoff.NewExponentialBackOff())
-	if err != nil {
-		logger.Error("Failed request to Pocket", "error", err)
-		return err
-	}
-
-	if e := gjson.Get(responseData, "error").String(); e != "" {
-		return errors.New(e)
-	}
-
-	if gjson.Get(responseData, "status").Int() == 2 {
-		logger.Info("No new data from Pocket")
-		since = newSince
-		return nil
-	}
-
-	list := gjson.Get(responseData, "list").Map()
-	var exitErr error
-	var count int
-	for k := range list {
-		value := list[k].String()
-		u := gjson.Get(value, "resolved_url")
-		if u.Exists() {
-			logger.Info("Processing", "resolved_url", u.String())
-
-			operation := func() error {
-				err := requests.
-					URL(linkdingURL+"/api/bookmarks/").
-					BodyJSON(&requestLinkding{
-						URL: u.String(),
-					}).
-					Header("Authorization", "Token "+linkdingAccessToken).
-					ContentType("application/json").
-					Fetch(context.Background())
-				if requests.HasStatusErr(err, http.StatusUnauthorized) {
-					return backoff.Permanent(errLinkdingUnauthorized)
-				}
-
-				if err != nil {
-					return err
-				}
-
-				return nil
-			}
-
-			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
-			if errors.Is(err, errLinkdingUnauthorized) {
-				return err
-			}
-			if err != nil {
-				logger.Error("Failed to save bookmark", "error", err, "resolved_url", u.String())
-				if !errors.Is(exitErr, err) {
-					exitErr = errors.Join(exitErr, err)
-				}
-
-				continue
-			}
-
-			count++
-			logger.Info("Added", "url", u.String())
-		}
-	}
-	logger.Info("Processed", "count", count)
-
-	if exitErr == nil {
-		since = newSince
-	}
-
-	return exitErr
-}
-
-type requestPocket struct {
-	ConsumerKey string `json:"consumer_key"`
-	AccessToken string `json:"access_token"`
-	State       string `json:"state"`
-	DetailType  string `json:"detailType"`
-	Since       string `json:"since"`
-}
-
-type requestLinkding struct {
-	URL string `json:"url"`
 }
