@@ -29,7 +29,7 @@ kos:
       - "{{.Tag}}"
       - latest
     base_image: alpine:latest
-    user: "1001:1001"
+    user: "1000:1000"
     bare: true
     preserve_import_paths: false
     platforms:
