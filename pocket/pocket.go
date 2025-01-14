@@ -36,7 +36,6 @@ const (
 )
 
 var (
-	ErrEmptyList          = errors.New("empty list")
 	ErrSomethingWentWrong = errors.New("Something Went Wrong")
 )
 
@@ -61,11 +60,12 @@ func New(consumerKey, accessToken string) (*Pocket, error) {
 	}, nil
 }
 
-func (p *Pocket) Retrive(since int64) ([]string, error) {
+func (p *Pocket) Retrive(since int64) ([]string, int64, error) {
 	request, _ := http.NewRequest(http.MethodPost, endpoint, nil)
 	request.Header.Add("Content-Type", "application/json")
 	request.Header.Add("X-Accept", "application/json")
 
+	var newSince int64
 	operation := func(offset int) ([]string, error) {
 		body := p.body
 		body, _ = sjson.Set(body, "since", since)
@@ -90,8 +90,11 @@ func (p *Pocket) Retrive(since int64) ([]string, error) {
 			return nil, ErrSomethingWentWrong
 		}
 
+		// Update since
+		newSince = gjson.Get(bodyString, "since").Int()
+
 		if gjson.Get(bodyString, "status").Int() == 2 {
-			return nil, ErrEmptyList
+			return nil, nil
 		}
 
 		list := gjson.Get(bodyString, "list").Map()
@@ -123,7 +126,7 @@ func (p *Pocket) Retrive(since int64) ([]string, error) {
 			if errors.Is(err, ErrSomethingWentWrong) {
 				break
 			}
-			if err != nil && !errors.Is(err, ErrEmptyList) {
+			if err != nil {
 				continue
 			}
 
@@ -148,7 +151,7 @@ func (p *Pocket) Retrive(since int64) ([]string, error) {
 		var links []string
 		links, err = retrive(offset)
 		if err != nil {
-			return nil, err
+			return nil, newSince, err
 		}
 		count = len(links)
 		if count > 0 {
@@ -157,5 +160,5 @@ func (p *Pocket) Retrive(since int64) ([]string, error) {
 		offset += pocketCount
 	}
 
-	return result, nil
+	return result, newSince, nil
 }

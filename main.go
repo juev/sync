@@ -92,11 +92,10 @@ func main() {
 	slog.Info("Starting")
 
 	runProcess := func(since int64) int64 {
-		slog.Debug("Processing", "since", time.Unix(since, 0).Format(time.RFC3339))
-		newSince := time.Now().Unix()
-		links, err := pocketClient.Retrive(since)
-		if err == pocket.ErrEmptyList {
-			slog.Info("No new data from Pocket")
+		slog.Debug("Processing", "since", since)
+		links, newSince, err := pocketClient.Retrive(since)
+		if len(links) == 0 {
+			slog.Debug("No new data from Pocket")
 			return newSince
 		}
 		if err != nil {
