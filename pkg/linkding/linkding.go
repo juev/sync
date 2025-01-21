@@ -1,20 +1,25 @@
 package linkding
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/tidwall/sjson"
-
 	"github.com/juev/sync/internal/client"
+	"github.com/tidwall/sjson"
 )
 
 type Linkding struct {
 	request http.Request
+	client  *http.Client
 }
+
+var (
+	ErrLinkdingUnauthorized = errors.New("Linkding Unauthorized")
+)
 
 func New(apiURL, token string) (*Linkding, error) {
 	u, err := url.Parse(apiURL)
