@@ -2,11 +2,11 @@ package pocket
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/juev/sync/internal/client"
 	"github.com/tidwall/gjson"
@@ -22,6 +22,7 @@ type Pocket struct {
 	Offset      int    `json:"offset"`
 	Total       int    `json:"total"`
 	body        string
+	client      *http.Client
 }
 
 const (
@@ -31,10 +32,6 @@ const (
 	pocketDefaultOffset = 0
 	pocketState         = "unread"
 	pocketDetailType    = "simple"
-)
-
-var (
-	ErrSomethingWentWrong = errors.New("Something Went Wrong")
 )
 
 func New(consumerKey, accessToken string) (*Pocket, error) {
@@ -48,26 +45,30 @@ func New(consumerKey, accessToken string) (*Pocket, error) {
 		Total:       pocketTotal,
 	})
 
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+
 	return &Pocket{
-		body: string(body),
+		body:   string(body),
+		client: client,
 	}, nil
 }
 
 func (p *Pocket) Retrive(since int64) ([]string, int64, error) {
-	var newSince int64
-
 	offset := pocketDefaultOffset
 	var (
-		result []string
-		err    error
+		newSince int64
+		result   []string
+		err      error
 	)
 
 	count := pocketCount
 	for count > 0 {
 		var links []string
-		links, newSince, err = p.request(since, offset)
+		links, newSince, err = p.operation(since, offset)
 		if err != nil {
-			return nil, newSince, err
+			return nil, 0, err
 		}
 		count = len(links)
 		if count > 0 {
@@ -79,7 +80,7 @@ func (p *Pocket) Retrive(since int64) ([]string, int64, error) {
 	return result, newSince, nil
 }
 
-func (p *Pocket) request(since int64, offset int) ([]string, int64, error) {
+func (p *Pocket) operation(since int64, offset int) ([]string, int64, error) {
 	request, _ := http.NewRequest(http.MethodPost, endpoint, nil)
 	request.Header.Add("Content-Type", "application/json")
 	request.Header.Add("X-Accept", "application/json")
@@ -98,8 +99,9 @@ func (p *Pocket) request(since int64, offset int) ([]string, int64, error) {
 	}
 
 	bodyString := response.Body
-	if e := gjson.Get(bodyString, "error").String(); e != "" {
-		return nil, 0, ErrSomethingWentWrong
+
+	if gjson.Get(bodyString, "error").String() != "" {
+		return nil, 0, fmt.Errorf("got response %d; X-Error=[%s]", response.StatusCode, response.Header.Get("X-Error"))
 	}
 
 	// Update since

@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/juev/sync/linkding"
-	"github.com/juev/sync/pocket"
-	"github.com/juev/sync/prettylog"
+	"github.com/juev/sync/internal/prettylog"
+	"github.com/juev/sync/pkg/linkding"
+	"github.com/juev/sync/pkg/pocket"
 )
 
 const (
@@ -94,13 +94,13 @@ func main() {
 	runProcess := func(since int64) int64 {
 		slog.Debug("Processing", "since", since)
 		links, newSince, err := pocketClient.Retrive(since)
-		if len(links) == 0 {
-			slog.Debug("No new data from Pocket")
-			return newSince
-		}
 		if err != nil {
 			slog.Error("Failed to retrieve Pocket data", "error", err)
 			return since
+		}
+		if len(links) == 0 {
+			slog.Debug("No new data from Pocket")
+			return newSince
 		}
 		for _, link := range links {
 			slog.Info("Processing", "resolved_url", link)
